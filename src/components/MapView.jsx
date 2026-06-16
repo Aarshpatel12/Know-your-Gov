@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import RoutingMachine from './RoutingMachine';
+import NavigationPanel from './NavigationPanel';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -13,7 +14,20 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-// Live location marker — solid blue dot with accuracy ring
+// Inject pulse-ring keyframe once
+if (typeof document !== 'undefined' && !document.getElementById('pulse-style')) {
+  const style = document.createElement('style');
+  style.id = 'pulse-style';
+  style.textContent = `
+    @keyframes pulse-ring {
+      0%   { transform: scale(0.5); opacity: 1; }
+      100% { transform: scale(2.5); opacity: 0; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// ── Live location marker (normal mode) — pulsing blue dot ────────────────────
 const liveIcon = new L.DivIcon({
   className: '',
   html: `
@@ -40,52 +54,84 @@ const liveIcon = new L.DivIcon({
   popupAnchor:[0, -14],
 });
 
-// Inject pulse-ring keyframe once
-if (typeof document !== 'undefined' && !document.getElementById('pulse-style')) {
-  const style = document.createElement('style');
-  style.id = 'pulse-style';
-  style.textContent = `
-    @keyframes pulse-ring {
-      0%   { transform: scale(0.5); opacity: 1; }
-      100% { transform: scale(2.5); opacity: 0; }
-    }
-  `;
-  document.head.appendChild(style);
+// ── Navigation arrow marker (heading-aware) ───────────────────────────────────
+function makeNavIcon(heading) {
+  return new L.DivIcon({
+    className: '',
+    html: `
+      <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(${heading}deg)">
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <polygon points="14,2 26,26 14,20 2,26" fill="#2563EB" stroke="white" stroke-width="2"/>
+        </svg>
+      </div>
+    `,
+    iconSize:   [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor:[0, -16],
+  });
 }
 
-// ── Map controller: invalidates size + flies to active item / user location ──
-function MapController({ activeItem, userLocation }) {
+// ── NavController: auto-follows user during navigation ───────────────────────
+function NavController({ isNavigating, userLocation }) {
   const map = useMap();
 
-  // Invalidate on mount (critical for mobile tab switch)
+  useEffect(() => {
+    if (!map || !isNavigating || !userLocation) return;
+    map.setView(userLocation, 17);          // instant — no flyTo animation
+  }, [userLocation, isNavigating]);
+
+  // When navigation starts, immediately snap to zoom 17
+  useEffect(() => {
+    if (!map || !isNavigating || !userLocation) return;
+    map.setView(userLocation, 17);
+  }, [isNavigating]);
+
+  return null;
+}
+
+// ── MapController: handles invalidateSize, flyTo for normal mode ──────────────
+function MapController({ activeItem, userLocation, isNavigating }) {
+  const map = useMap();
+
   useEffect(() => {
     const t = setTimeout(() => map.invalidateSize(), 150);
     return () => clearTimeout(t);
   }, []);
 
-  // Fly to active item when selected
   useEffect(() => {
-    if (!map) return;
+    if (!map || isNavigating) return;
     map.invalidateSize();
     if (activeItem?.lat && activeItem?.lng) {
       map.flyTo([activeItem.lat, activeItem.lng], 16, { animate: true, duration: 0.8 });
     }
   }, [activeItem]);
 
-  // Pan to user when live location updates (only if no active item selected)
   useEffect(() => {
-    if (!map || !userLocation || activeItem) return;
+    if (!map || !userLocation || activeItem || isNavigating) return;
     map.flyTo(userLocation, 14, { animate: true, duration: 0.8 });
   }, [userLocation]);
 
   return null;
 }
 
-export default function MapView({ data, activeItem, setActiveItem, userLocation, isTracking }) {
+export default function MapView({
+  data,
+  activeItem,
+  setActiveItem,
+  userLocation,
+  isTracking,
+  isNavigating,
+  deviceHeading,
+  distanceToDestination,
+  onStartNavigation,
+  onStopNavigation,
+}) {
   const ludhianaCenter = [30.9010, 75.8573];
+  const navIcon = deviceHeading != null ? makeNavIcon(deviceHeading) : makeNavIcon(0);
+  const arrived = distanceToDestination != null && distanceToDestination < 0.05;
 
   return (
-    <div style={{ width: '100%', height: '100%', minHeight: '300px' }} className="relative z-0">
+    <div style={{ width: '100%', height: '100%', minHeight: '300px', position: 'relative' }}>
       <MapContainer
         center={ludhianaCenter}
         zoom={11}
@@ -99,19 +145,24 @@ export default function MapView({ data, activeItem, setActiveItem, userLocation,
           maxZoom={19}
         />
 
-        <MapController activeItem={activeItem} userLocation={userLocation} />
+        <MapController activeItem={activeItem} userLocation={userLocation} isNavigating={isNavigating} />
+        <NavController isNavigating={isNavigating} userLocation={userLocation} />
 
-        {/* Real road route from user → selected item */}
-        {userLocation && activeItem && (
+        {/* Real road route — hide when arrived */}
+        {userLocation && activeItem && !arrived && (
           <RoutingMachine
             start={userLocation}
             end={[activeItem.lat, activeItem.lng]}
           />
         )}
 
-        {/* ── Live user location marker ── */}
+        {/* ── User location marker ── */}
         {userLocation && (
-          <Marker position={userLocation} icon={liveIcon} zIndexOffset={1000}>
+          <Marker
+            position={userLocation}
+            icon={isNavigating ? navIcon : liveIcon}
+            zIndexOffset={1000}
+          >
             <Popup>
               <div style={{ textAlign: 'center', padding: '4px' }}>
                 <strong style={{ fontSize: '13px' }}>📍 Your Location</strong>
@@ -176,6 +227,52 @@ export default function MapView({ data, activeItem, setActiveItem, userLocation,
           ))}
         </MarkerClusterGroup>
       </MapContainer>
+
+      {/* ── "Start Navigation" button overlay (when route is ready) ── */}
+      {activeItem && userLocation && !isNavigating && (
+        <div style={{
+          position: 'absolute',
+          bottom: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 500,
+        }}>
+          <button
+            onClick={onStartNavigation}
+            style={{
+              background: 'linear-gradient(135deg, #16a34a, #15803d)',
+              color: 'white',
+              border: 'none',
+              borderRadius: 28,
+              padding: '13px 28px',
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: '0 6px 32px rgba(22,163,74,0.5)',
+              letterSpacing: '0.2px',
+              whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            🧭 Start Navigation
+          </button>
+        </div>
+      )}
+
+      {/* ── Navigation HUD overlay ── */}
+      {isNavigating && (
+        <NavigationPanel
+          activeItem={activeItem}
+          userLocation={userLocation}
+          distanceToDestination={distanceToDestination}
+          deviceHeading={deviceHeading}
+          onStopNavigation={onStopNavigation}
+        />
+      )}
     </div>
   );
 }

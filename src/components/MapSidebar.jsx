@@ -98,7 +98,7 @@ function AwcCard({ item }) {
   );
 }
 
-export default function MapSidebar({ data, activeItem, setActiveItem, category, onLocateMe, userLocation, locating, isTracking }) {
+export default function MapSidebar({ data, activeItem, setActiveItem, category, onLocateMe, userLocation, locating, isTracking, isNavigating, onStartNavigation }) {
   const [search, setSearch] = useState('');
 
   const cfg   = CATEGORY_CONFIG[category] || { label: `${category} Directory`, color: 'green', icon: null };
@@ -230,6 +230,33 @@ export default function MapSidebar({ data, activeItem, setActiveItem, category, 
                 </div>
 
                 {renderCard(item)}
+
+                {/* Start Navigation button — shown on the active selected item */}
+                {isActive && userLocation && !isNavigating && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onStartNavigation && onStartNavigation(); }}
+                    style={{
+                      marginTop: 10,
+                      width: '100%',
+                      padding: '10px 0',
+                      background: 'linear-gradient(135deg, #16a34a, #15803d)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 10,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      boxShadow: '0 3px 14px rgba(22,163,74,0.4)',
+                      letterSpacing: '0.2px',
+                    }}
+                  >
+                    🧭 Start Navigation
+                  </button>
+                )}
               </div>
             );
           })

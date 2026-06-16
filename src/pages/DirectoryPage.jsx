@@ -30,13 +30,24 @@ export default function DirectoryPage() {
   const [activeItem, setActiveItem]   = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [mobileTab, setMobileTab]     = useState('list');
-  const [locating, setLocating]       = useState(false);   // spinner while acquiring
-  const [locError, setLocError]       = useState(null);    // error message
-  const [isTracking, setIsTracking]   = useState(false);   // live watch active
+  const [locating, setLocating]       = useState(false);
+  const [locError, setLocError]       = useState(null);
+  const [isTracking, setIsTracking]   = useState(false);
 
-  const watchIdRef  = useRef(null);   // navigator.geolocation.watchPosition id
+  // ── Navigation state ──────────────────────────────────────────────────────
+  const [isNavigating, setIsNavigating]   = useState(false);
+  const [deviceHeading, setDeviceHeading] = useState(null);
+  const orientationWatchRef = useRef(null);
+
+  const watchIdRef  = useRef(null);
   const categoryRef = useRef(category);
   categoryRef.current = category;
+
+  // ── Compute distance to destination during navigation ─────────────────────
+  const distanceToDestination =
+    isNavigating && userLocation && activeItem
+      ? calculateDistance(userLocation[0], userLocation[1], activeItem.lat, activeItem.lng)
+      : null;
 
   // ── Load dataset on category change ──────────────────────────────────────
   useEffect(() => {
@@ -45,11 +56,15 @@ export default function DirectoryPage() {
     setUserLocation(null);
     setMobileTab('list');
     setLocError(null);
-    stopTracking();           // clear any live watch when switching category
+    stopTracking();
+    handleStopNavigation();
   }, [category]);
 
-  // ── Cleanup watch on unmount ──────────────────────────────────────────────
-  useEffect(() => () => stopTracking(), []);
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
+  useEffect(() => () => {
+    stopTracking();
+    handleStopNavigation();
+  }, []);
 
   // ── Stop live tracking helper ─────────────────────────────────────────────
   function stopTracking() {
@@ -60,6 +75,40 @@ export default function DirectoryPage() {
     setIsTracking(false);
   }
 
+  // ── Navigation: start / stop ──────────────────────────────────────────────
+  const handleStartNavigation = () => {
+    setIsNavigating(true);
+
+    const addListener = () => {
+      const handler = (e) => {
+        if (e.alpha != null) setDeviceHeading(e.alpha);
+      };
+      orientationWatchRef.current = handler;
+      window.addEventListener('deviceorientation', handler, true);
+    };
+
+    // iOS 13+ requires explicit permission for DeviceOrientationEvent
+    if (
+      typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function'
+    ) {
+      DeviceOrientationEvent.requestPermission()
+        .then(state => { if (state === 'granted') addListener(); })
+        .catch(console.warn);
+    } else {
+      addListener();
+    }
+  };
+
+  const handleStopNavigation = () => {
+    setIsNavigating(false);
+    setDeviceHeading(null);
+    if (orientationWatchRef.current) {
+      window.removeEventListener('deviceorientation', orientationWatchRef.current, true);
+      orientationWatchRef.current = null;
+    }
+  };
+
   // ── Called every time watchPosition fires a new position ─────────────────
   const onPositionUpdate = useCallback((position) => {
     const { latitude: lat, longitude: lng } = position.coords;
@@ -68,7 +117,6 @@ export default function DirectoryPage() {
     setLocError(null);
     setIsTracking(true);
 
-    // Re-sort list against live location
     const base = getBaseData(categoryRef.current);
     setData(sortByDistance(base, lat, lng));
   }, []);
@@ -91,10 +139,8 @@ export default function DirectoryPage() {
       return;
     }
 
-    // If already tracking → stop
     if (isTracking) {
       stopTracking();
-      // Restore unsorted data
       setData(getBaseData(category));
       setUserLocation(null);
       return;
@@ -103,14 +149,13 @@ export default function DirectoryPage() {
     setLocating(true);
     setLocError(null);
 
-    // watchPosition gives continuous live updates as user moves
     watchIdRef.current = navigator.geolocation.watchPosition(
       onPositionUpdate,
       onPositionError,
       {
-        enableHighAccuracy: true,   // use GPS chip on mobile
-        maximumAge: 5000,           // accept cached position up to 5s old
-        timeout: 15000,             // give up after 15s if no fix
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 15000,
       }
     );
   };
@@ -118,6 +163,8 @@ export default function DirectoryPage() {
   const handleSetActiveItem = (item) => {
     setActiveItem(item);
     if (item) setMobileTab('map');
+    // Stop navigation if user selects a different item
+    if (isNavigating) handleStopNavigation();
   };
 
   return (
@@ -132,15 +179,25 @@ export default function DirectoryPage() {
       )}
 
       {/* ── Live-tracking banner ── */}
-      {isTracking && (
+      {isTracking && !isNavigating && (
         <div className="shrink-0 bg-green-50 border-b border-green-200 px-4 py-1.5 flex items-center gap-2">
-          {/* Pulsing live dot */}
           <span className="relative flex h-2.5 w-2.5 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-600"></span>
           </span>
           <p className="text-xs text-green-800 font-medium">
             Live location active · List sorted by nearest · Tap a result to see route
+          </p>
+        </div>
+      )}
+
+      {/* ── Navigation mode banner ── */}
+      {isNavigating && (
+        <div className="shrink-0 px-4 py-1.5 flex items-center gap-2"
+          style={{ background: '#1a1a3e', color: 'white' }}>
+          <span style={{ fontSize: 14 }}>🧭</span>
+          <p className="text-xs font-medium" style={{ color: '#93c5fd' }}>
+            Navigation mode · Auto-following your position
           </p>
         </div>
       )}
@@ -163,10 +220,10 @@ export default function DirectoryPage() {
         ))}
       </div>
 
-      {/* ── Body: map always rendered beneath sliding sidebar ── */}
+      {/* ── Body ── */}
       <div className="relative flex flex-1 overflow-hidden min-h-0">
 
-        {/* MAP — always in DOM so Leaflet has real dimensions */}
+        {/* MAP */}
         <div className="absolute inset-0 md:relative md:flex-1">
           <MapView
             data={data}
@@ -174,10 +231,15 @@ export default function DirectoryPage() {
             setActiveItem={handleSetActiveItem}
             userLocation={userLocation}
             isTracking={isTracking}
+            isNavigating={isNavigating}
+            deviceHeading={deviceHeading}
+            distanceToDestination={distanceToDestination}
+            onStartNavigation={handleStartNavigation}
+            onStopNavigation={handleStopNavigation}
           />
         </div>
 
-        {/* SIDEBAR — slides over map on mobile */}
+        {/* SIDEBAR */}
         <div
           className={`
             absolute inset-0 z-10
@@ -198,6 +260,8 @@ export default function DirectoryPage() {
             userLocation={userLocation}
             locating={locating}
             isTracking={isTracking}
+            isNavigating={isNavigating}
+            onStartNavigation={handleStartNavigation}
           />
         </div>
 
