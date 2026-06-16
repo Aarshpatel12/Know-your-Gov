@@ -22,7 +22,7 @@ export default function MapSidebar({ data, activeItem, setActiveItem, category, 
   };
 
   return (
-    <div className="w-full md:w-96 bg-white shadow-xl z-10 flex flex-col h-full">
+    <div className="w-full bg-white shadow-xl z-10 flex flex-col h-full overflow-hidden">
       <div className="p-4 bg-gray-50 border-b flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-gray-800 uppercase tracking-wide text-sm">

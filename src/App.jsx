@@ -6,9 +6,10 @@ import GlobalHeader from './components/GlobalHeader';
 
 function App() {
   return (
-    <div className="flex flex-col h-screen bg-gray-50 font-sans">
+    // Use 100dvh to account for mobile browser chrome (address bar)
+    <div className="flex flex-col bg-gray-50 font-sans" style={{ height: '100dvh' }}>
       <GlobalHeader />
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/directory/:category" element={<DirectoryPage />} />

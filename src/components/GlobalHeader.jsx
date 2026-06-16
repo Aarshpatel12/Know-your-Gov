@@ -7,17 +7,23 @@ export default function GlobalHeader() {
   const location = useLocation();
 
   return (
-    <header className="bg-green-700 text-white p-4 shadow-md flex justify-between items-center z-20">
-      <div className="flex items-center gap-4">
-        {location.pathname !== '/' && (
-          <button onClick={() => navigate('/')} className="hover:bg-green-600 p-2 rounded-full transition">
-            <ArrowLeft size={24} />
-          </button>
-        )}
-        <div>
-          <h1 className="text-2xl font-bold">Know Your Government</h1>
-          <p className="text-sm text-green-200">District Administration Ludhiana</p>
-        </div>
+    <header className="bg-green-700 text-white px-4 py-3 shadow-md flex items-center gap-3 z-20 shrink-0">
+      {location.pathname !== '/' && (
+        <button
+          onClick={() => navigate('/')}
+          className="hover:bg-green-600 p-2 rounded-full transition shrink-0"
+          aria-label="Go back"
+        >
+          <ArrowLeft size={22} />
+        </button>
+      )}
+      <div className="min-w-0">
+        <h1 className="text-lg sm:text-2xl font-bold leading-tight truncate">
+          Know Your Government
+        </h1>
+        <p className="text-xs sm:text-sm text-green-200 truncate">
+          District Administration Ludhiana
+        </p>
       </div>
     </header>
   );

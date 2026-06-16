@@ -35,7 +35,7 @@ export default function MapView({ data, activeItem, setActiveItem, userLocation 
   const ludhianaCenter = [30.9010, 75.8573];
 
   return (
-    <div className="flex-1 h-full relative z-0">
+    <div className="w-full h-full relative z-0">
       <MapContainer center={ludhianaCenter} zoom={11} className="h-full w-full">
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <MapController activeItem={activeItem} userLocation={userLocation} />
