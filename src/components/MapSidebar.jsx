@@ -98,7 +98,7 @@ function AwcCard({ item }) {
   );
 }
 
-export default function MapSidebar({ data, activeItem, setActiveItem, category, onLocateMe, userLocation }) {
+export default function MapSidebar({ data, activeItem, setActiveItem, category, onLocateMe, userLocation, locating, isTracking }) {
   const [search, setSearch] = useState('');
 
   const cfg   = CATEGORY_CONFIG[category] || { label: `${category} Directory`, color: 'green', icon: null };
@@ -157,16 +157,37 @@ export default function MapSidebar({ data, activeItem, setActiveItem, category, 
         />
         <button
           onClick={onLocateMe}
-          className={`w-full text-white font-medium py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm ${
-            userLocation
-              ? 'bg-green-600 hover:bg-green-700'
-              : `${accent.locate}`
+          disabled={locating}
+          className={`w-full text-white font-medium py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm disabled:opacity-70 ${
+            isTracking
+              ? 'bg-red-500 hover:bg-red-600'          // stop tracking
+              : userLocation
+              ? 'bg-green-600 hover:bg-green-700'      // located, not live
+              : `${accent.locate}`                     // not yet located
           }`}
         >
-          <Navigation size={16} />
-          {userLocation
-            ? '✓ Sorted by Nearest — Tap any result to view on map'
-            : 'Find Nearest to Me'}
+          {locating ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+              </svg>
+              Getting your location...
+            </>
+          ) : isTracking ? (
+            <>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+              </span>
+              Live · Sorted by Nearest · Tap to Stop
+            </>
+          ) : (
+            <>
+              <Navigation size={16} />
+              {userLocation ? 'Update My Location' : 'Use My Live Location'}
+            </>
+          )}
         </button>
       </div>
 

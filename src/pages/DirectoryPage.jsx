@@ -1,65 +1,149 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import MapSidebar from '../components/MapSidebar';
 import MapView from '../components/MapView';
 import { calculateDistance } from '../utils/geoMath';
 import { List, Map } from 'lucide-react';
 
-import patwariData  from '../assets/data/patwaris.json';
+import patwariData   from '../assets/data/patwaris.json';
 import sewakendraData from '../assets/data/sewakendras.json';
-import kanungoData  from '../assets/data/kanungos.json';
-import awcData      from '../assets/data/awcs.json';
+import kanungoData   from '../assets/data/kanungos.json';
+import awcData       from '../assets/data/awcs.json';
+
+function getBaseData(category) {
+  if (category === 'patwari'    || category === 'patwaris')    return patwariData;
+  if (category === 'kanungo'    || category === 'kanungos')    return kanungoData;
+  if (category === 'sewakendra' || category === 'sewakendras') return sewakendraData;
+  if (category === 'awc'        || category === 'awcs')        return awcData;
+  return [];
+}
+
+function sortByDistance(base, lat, lng) {
+  return [...base]
+    .map(item => ({ ...item, distance: calculateDistance(lat, lng, item.lat, item.lng) }))
+    .sort((a, b) => a.distance - b.distance);
+}
 
 export default function DirectoryPage() {
   const { category } = useParams();
-  const [data, setData]             = useState([]);
-  const [activeItem, setActiveItem] = useState(null);
+  const [data, setData]               = useState([]);
+  const [activeItem, setActiveItem]   = useState(null);
   const [userLocation, setUserLocation] = useState(null);
-  const [mobileTab, setMobileTab]   = useState('list');
+  const [mobileTab, setMobileTab]     = useState('list');
+  const [locating, setLocating]       = useState(false);   // spinner while acquiring
+  const [locError, setLocError]       = useState(null);    // error message
+  const [isTracking, setIsTracking]   = useState(false);   // live watch active
 
+  const watchIdRef  = useRef(null);   // navigator.geolocation.watchPosition id
+  const categoryRef = useRef(category);
+  categoryRef.current = category;
+
+  // ── Load dataset on category change ──────────────────────────────────────
   useEffect(() => {
-    if      (category === 'patwari'    || category === 'patwaris')    setData(patwariData);
-    else if (category === 'kanungo'    || category === 'kanungos')    setData(kanungoData);
-    else if (category === 'sewakendra' || category === 'sewakendras') setData(sewakendraData);
-    else if (category === 'awc'        || category === 'awcs')        setData(awcData);
-    else setData([]);
-
+    setData(getBaseData(category));
     setActiveItem(null);
     setUserLocation(null);
     setMobileTab('list');
+    setLocError(null);
+    stopTracking();           // clear any live watch when switching category
   }, [category]);
+
+  // ── Cleanup watch on unmount ──────────────────────────────────────────────
+  useEffect(() => () => stopTracking(), []);
+
+  // ── Stop live tracking helper ─────────────────────────────────────────────
+  function stopTracking() {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setIsTracking(false);
+  }
+
+  // ── Called every time watchPosition fires a new position ─────────────────
+  const onPositionUpdate = useCallback((position) => {
+    const { latitude: lat, longitude: lng } = position.coords;
+    setUserLocation([lat, lng]);
+    setLocating(false);
+    setLocError(null);
+    setIsTracking(true);
+
+    // Re-sort list against live location
+    const base = getBaseData(categoryRef.current);
+    setData(sortByDistance(base, lat, lng));
+  }, []);
+
+  const onPositionError = useCallback((err) => {
+    setLocating(false);
+    setIsTracking(false);
+    const msgs = {
+      1: 'Location permission denied. Please allow location access in your browser settings.',
+      2: 'Location unavailable. Make sure GPS is enabled.',
+      3: 'Location request timed out. Try again.',
+    };
+    setLocError(msgs[err.code] || 'Could not get your location.');
+  }, []);
+
+  // ── Main: start / stop live tracking ─────────────────────────────────────
+  const handleLocateMe = () => {
+    if (!('geolocation' in navigator)) {
+      setLocError('Geolocation is not supported by your browser.');
+      return;
+    }
+
+    // If already tracking → stop
+    if (isTracking) {
+      stopTracking();
+      // Restore unsorted data
+      setData(getBaseData(category));
+      setUserLocation(null);
+      return;
+    }
+
+    setLocating(true);
+    setLocError(null);
+
+    // watchPosition gives continuous live updates as user moves
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      onPositionUpdate,
+      onPositionError,
+      {
+        enableHighAccuracy: true,   // use GPS chip on mobile
+        maximumAge: 5000,           // accept cached position up to 5s old
+        timeout: 15000,             // give up after 15s if no fix
+      }
+    );
+  };
 
   const handleSetActiveItem = (item) => {
     setActiveItem(item);
-    if (item) setMobileTab('map');   // auto-switch to map when item tapped
-  };
-
-  const handleLocateMe = () => {
-    if (!('geolocation' in navigator)) {
-      alert('Geolocation is not supported by your browser');
-      return;
-    }
-    navigator.geolocation.getCurrentPosition((position) => {
-      const { latitude: userLat, longitude: userLng } = position.coords;
-      setUserLocation([userLat, userLng]);
-
-      const base =
-        category === 'patwari'    || category === 'patwaris'    ? patwariData    :
-        category === 'sewakendra' || category === 'sewakendras' ? sewakendraData :
-        category === 'kanungo'    || category === 'kanungos'    ? kanungoData    :
-        category === 'awc'        || category === 'awcs'        ? awcData        : [];
-
-      const sorted = [...base]
-        .map(item => ({ ...item, distance: calculateDistance(userLat, userLng, item.lat, item.lng) }))
-        .sort((a, b) => a.distance - b.distance);
-
-      setData(sorted);
-      // Stay on List tab so user can see sorted results
-    });
+    if (item) setMobileTab('map');
   };
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
+
+      {/* ── Error toast ── */}
+      {locError && (
+        <div className="shrink-0 bg-red-50 border-b border-red-200 px-4 py-2 flex items-center justify-between gap-2">
+          <p className="text-xs text-red-700 flex-1">⚠️ {locError}</p>
+          <button onClick={() => setLocError(null)} className="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+        </div>
+      )}
+
+      {/* ── Live-tracking banner ── */}
+      {isTracking && (
+        <div className="shrink-0 bg-green-50 border-b border-green-200 px-4 py-1.5 flex items-center gap-2">
+          {/* Pulsing live dot */}
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-600"></span>
+          </span>
+          <p className="text-xs text-green-800 font-medium">
+            Live location active · List sorted by nearest · Tap a result to see route
+          </p>
+        </div>
+      )}
 
       {/* ── Mobile Tab Bar ── */}
       <div className="flex md:hidden shrink-0 bg-white border-b shadow-sm z-30">
@@ -79,25 +163,21 @@ export default function DirectoryPage() {
         ))}
       </div>
 
-      {/* ── Body: sidebar + map ──
-          Strategy: The MAP is ALWAYS rendered (never display:none) so Leaflet
-          always has a real DOM size. On mobile, the SIDEBAR slides on top of the
-          map using absolute positioning when the List tab is active.
-      ── */}
+      {/* ── Body: map always rendered beneath sliding sidebar ── */}
       <div className="relative flex flex-1 overflow-hidden min-h-0">
 
-        {/* MAP — always rendered, fills the entire content area */}
+        {/* MAP — always in DOM so Leaflet has real dimensions */}
         <div className="absolute inset-0 md:relative md:flex-1">
           <MapView
             data={data}
             activeItem={activeItem}
             setActiveItem={handleSetActiveItem}
             userLocation={userLocation}
+            isTracking={isTracking}
           />
         </div>
 
-        {/* SIDEBAR — on mobile: overlays the map when List tab is active.
-                      On desktop: always visible as a fixed-width panel. */}
+        {/* SIDEBAR — slides over map on mobile */}
         <div
           className={`
             absolute inset-0 z-10
@@ -105,9 +185,8 @@ export default function DirectoryPage() {
             md:w-96 md:shrink-0
             transition-transform duration-300
             ${mobileTab === 'list'
-              ? 'translate-x-0'          /* visible */
-              : '-translate-x-full md:translate-x-0' /* slid off-screen on mobile */
-            }
+              ? 'translate-x-0'
+              : '-translate-x-full md:translate-x-0'}
           `}
         >
           <MapSidebar
@@ -117,6 +196,8 @@ export default function DirectoryPage() {
             category={category}
             onLocateMe={handleLocateMe}
             userLocation={userLocation}
+            locating={locating}
+            isTracking={isTracking}
           />
         </div>
 
