@@ -5,104 +5,111 @@ import MapView from '../components/MapView';
 import { calculateDistance } from '../utils/geoMath';
 import { List, Map } from 'lucide-react';
 
-import patwariData from '../assets/data/patwaris.json';
+import patwariData  from '../assets/data/patwaris.json';
 import sewakendraData from '../assets/data/sewakendras.json';
-import kanungoData from '../assets/data/kanungos.json';
-import awcData from '../assets/data/awcs.json';
+import kanungoData  from '../assets/data/kanungos.json';
+import awcData      from '../assets/data/awcs.json';
 
 export default function DirectoryPage() {
   const { category } = useParams();
-  const [data, setData] = useState([]);
+  const [data, setData]             = useState([]);
   const [activeItem, setActiveItem] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
-  // mobile tab: 'list' | 'map'
-  const [mobileTab, setMobileTab] = useState('list');
+  const [mobileTab, setMobileTab]   = useState('list');
 
   useEffect(() => {
-    if (category === 'patwari' || category === 'patwaris') {
-      setData(patwariData);
-    } else if (category === 'kanungo' || category === 'kanungos') {
-      setData(kanungoData);
-    } else if (category === 'sewakendra' || category === 'sewakendras') {
-      setData(sewakendraData);
-    } else if (category === 'awc' || category === 'awcs') {
-      setData(awcData);
-    } else {
-      setData([]);
-    }
+    if      (category === 'patwari'    || category === 'patwaris')    setData(patwariData);
+    else if (category === 'kanungo'    || category === 'kanungos')    setData(kanungoData);
+    else if (category === 'sewakendra' || category === 'sewakendras') setData(sewakendraData);
+    else if (category === 'awc'        || category === 'awcs')        setData(awcData);
+    else setData([]);
+
     setActiveItem(null);
     setUserLocation(null);
     setMobileTab('list');
   }, [category]);
 
-  // When user taps a list item on mobile, switch to map view
   const handleSetActiveItem = (item) => {
     setActiveItem(item);
-    if (item) setMobileTab('map');
+    if (item) setMobileTab('map');   // auto-switch to map when item tapped
   };
 
   const handleLocateMe = () => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition((position) => {
-        const userLat = position.coords.latitude;
-        const userLng = position.coords.longitude;
-        setUserLocation([userLat, userLng]);
-
-        let baseData = [];
-        if (category === 'patwari' || category === 'patwaris') {
-          baseData = patwariData;
-        } else if (category === 'sewakendra' || category === 'sewakendras') {
-          baseData = sewakendraData;
-        } else if (category === 'kanungo' || category === 'kanungos') {
-          baseData = kanungoData;
-        } else if (category === 'awc' || category === 'awcs') {
-          baseData = awcData;
-        }
-
-        const sortedData = [...baseData].map(item => ({
-          ...item,
-          distance: calculateDistance(userLat, userLng, item.lat, item.lng)
-        })).sort((a, b) => a.distance - b.distance);
-
-        setData(sortedData);
-      });
-    } else {
+    if (!('geolocation' in navigator)) {
       alert('Geolocation is not supported by your browser');
+      return;
     }
+    navigator.geolocation.getCurrentPosition((position) => {
+      const { latitude: userLat, longitude: userLng } = position.coords;
+      setUserLocation([userLat, userLng]);
+
+      const base =
+        category === 'patwari'    || category === 'patwaris'    ? patwariData    :
+        category === 'sewakendra' || category === 'sewakendras' ? sewakendraData :
+        category === 'kanungo'    || category === 'kanungos'    ? kanungoData    :
+        category === 'awc'        || category === 'awcs'        ? awcData        : [];
+
+      const sorted = [...base]
+        .map(item => ({ ...item, distance: calculateDistance(userLat, userLng, item.lat, item.lng) }))
+        .sort((a, b) => a.distance - b.distance);
+
+      setData(sorted);
+      setMobileTab('map');
+    });
   };
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
+
       {/* ── Mobile Tab Bar ── */}
-      <div className="flex md:hidden border-b bg-white z-20 shrink-0">
-        <button
-          onClick={() => setMobileTab('list')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors
-            ${mobileTab === 'list'
-              ? 'text-green-700 border-b-2 border-green-700 bg-green-50'
-              : 'text-gray-500'}`}
-        >
-          <List size={18} /> List
-        </button>
-        <button
-          onClick={() => setMobileTab('map')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors
-            ${mobileTab === 'map'
-              ? 'text-green-700 border-b-2 border-green-700 bg-green-50'
-              : 'text-gray-500'}`}
-        >
-          <Map size={18} /> Map
-        </button>
+      <div className="flex md:hidden shrink-0 bg-white border-b shadow-sm z-30">
+        {['list', 'map'].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setMobileTab(tab)}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold border-b-2 transition-all ${
+              mobileTab === tab
+                ? 'text-green-700 border-green-700 bg-green-50'
+                : 'text-gray-500 border-transparent'
+            }`}
+          >
+            {tab === 'list' ? <List size={16} /> : <Map size={16} />}
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
       </div>
 
-      {/* ── Main Content ── */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar: visible on desktop always; on mobile only when tab='list' */}
-        <div className={`
-          ${mobileTab === 'list' ? 'flex' : 'hidden'}
-          md:flex
-          w-full md:w-96 shrink-0
-        `}>
+      {/* ── Body: sidebar + map ──
+          Strategy: The MAP is ALWAYS rendered (never display:none) so Leaflet
+          always has a real DOM size. On mobile, the SIDEBAR slides on top of the
+          map using absolute positioning when the List tab is active.
+      ── */}
+      <div className="relative flex flex-1 overflow-hidden min-h-0">
+
+        {/* MAP — always rendered, fills the entire content area */}
+        <div className="absolute inset-0 md:relative md:flex-1">
+          <MapView
+            data={data}
+            activeItem={activeItem}
+            setActiveItem={handleSetActiveItem}
+            userLocation={userLocation}
+          />
+        </div>
+
+        {/* SIDEBAR — on mobile: overlays the map when List tab is active.
+                      On desktop: always visible as a fixed-width panel. */}
+        <div
+          className={`
+            absolute inset-0 z-10
+            md:relative md:inset-auto md:z-auto
+            md:w-96 md:shrink-0
+            transition-transform duration-300
+            ${mobileTab === 'list'
+              ? 'translate-x-0'          /* visible */
+              : '-translate-x-full md:translate-x-0' /* slid off-screen on mobile */
+            }
+          `}
+        >
           <MapSidebar
             data={data}
             activeItem={activeItem}
@@ -113,19 +120,6 @@ export default function DirectoryPage() {
           />
         </div>
 
-        {/* Map: visible on desktop always; on mobile only when tab='map' */}
-        <div className={`
-          ${mobileTab === 'map' ? 'flex' : 'hidden'}
-          md:flex
-          flex-1
-        `}>
-          <MapView
-            data={data}
-            activeItem={activeItem}
-            setActiveItem={handleSetActiveItem}
-            userLocation={userLocation}
-          />
-        </div>
       </div>
     </div>
   );

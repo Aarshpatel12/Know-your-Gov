@@ -2,8 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
+/* ── Base reset for full-screen mobile app ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
   height: 100%;
+  height: -webkit-fill-available; /* Safari iOS */
+}
+
+body {
+  height: 100%;
+  height: -webkit-fill-available;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent; /* Remove grey tap flash on mobile */
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Leaflet tile fix ── 
+   Ensures map tiles always show above other elements */
+.leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 0;
+}
+
+/* Hide the Leaflet Routing Machine panel (we don't want it shown) */
+.leaflet-routing-container {
+  display: none !important;
+}
+
+/* ── Touch improvements ── */
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+input {
+  font-size: 16px; /* Prevents iOS auto-zoom on input focus */
 }
